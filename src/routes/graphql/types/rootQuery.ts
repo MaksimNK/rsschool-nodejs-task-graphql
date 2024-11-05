@@ -1,11 +1,18 @@
-import { GraphQLList, GraphQLNonNull, GraphQLString, GraphQLObjectType } from 'graphql';
-import { MemberType, MemberTypeIdEnum } from './memberType.js';
+import { GraphQLList, GraphQLNonNull, GraphQLObjectType } from 'graphql';
+import { MemberType } from './memberType.js';
 import { PostType } from './post.js';
 import { UserType } from './user.js';
 import { UUIDType } from './uuid.js';
 import { ProfileType } from './profile.js';
 import { PrismaClient } from '@prisma/client';
-import { memberTypeLoader } from '../dataLoader.js';
+import {
+  memberTypeLoader,
+  profileLoader,
+  userLoader,
+  postLoader,
+} from '../dataLoader.js';
+import { parseResolveInfo } from 'graphql-parse-resolve-info';
+import { MemberTypeIdEnum } from './enum.js';
 
 const prisma = new PrismaClient();
 
@@ -14,78 +21,80 @@ const RootQuery = new GraphQLObjectType({
   fields: {
     memberTypes: {
       type: new GraphQLList(MemberType),
-      resolve: async (parent, args) => {
+      resolve: async () => {
         const memberTypes = await prisma.memberType.findMany();
-        memberTypes.forEach((memberType) => {
-          memberTypeLoader.prime(memberType.id, {
-            id: memberType.id,
-            discount: memberType.discount,
-            postsLimitPerMonth: memberType.postsLimitPerMonth,
-          });
-        });
-
+        memberTypes.forEach((memberType) =>
+          memberTypeLoader.prime(memberType.id, memberType),
+        );
         return memberTypes;
       },
     },
     memberType: {
-      type: MemberType,
+      type: MemberType as GraphQLObjectType,
       args: { id: { type: new GraphQLNonNull(MemberTypeIdEnum) } },
-      resolve: async (parent, args: { id: string }) => {
-        const memberType = await prisma.memberType.findUnique({
+      resolve: async (_, args: { id: string }) => {
+        return await prisma.memberType.findUnique({
           where: { id: args.id },
         });
-        return memberType || { id: args.id, discount: 0, postsLimitPerMonth: 0 };
+      },
+    },
+    users: {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
+      resolve: async (_, __, context, info) => {
+        const parsedResolveInfo = parseResolveInfo(info);
+        const fields = parsedResolveInfo?.fieldsByTypeName.User || {};
+        const include: Record<string, boolean> = {};
+
+        if ('userSubscribedTo' in fields) {
+          include.userSubscribedTo = true;
+        }
+        if ('subscribedToUser' in fields) {
+          include.subscribedToUser = true;
+        }
+
+        const users = await prisma.user.findMany({ include });
+        users.forEach((user) => userLoader.prime(user.id, user));
+        return users;
+      },
+    },
+    user: {
+      type: UserType as GraphQLObjectType,
+      args: { id: { type: new GraphQLNonNull(UUIDType) } },
+      resolve: async (_, args: { id: string }, context) => {
+        return await userLoader.load(args.id);
       },
     },
     posts: {
-      type: new GraphQLList(PostType),
-      resolve: async (parent, args) => {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
+      resolve: async () => {
         const posts = await prisma.post.findMany();
         return posts;
       },
     },
     post: {
-      type: PostType,
+      type: PostType as GraphQLObjectType,
       args: { id: { type: new GraphQLNonNull(UUIDType) } },
-      resolve: async (parent, args: { id: string }) => {
-        const post = await prisma.post.findUnique({
+      resolve: async (_, args: { id: string }) => {
+        return await prisma.post.findUnique({
           where: { id: args.id },
         });
-        return post;
-      },
-    },
-    users: {
-      type: new GraphQLList(UserType),
-      resolve: async (parent, args) => {
-        const users = await prisma.user.findMany();
-        return users;
-      },
-    },
-    user: {
-      type: new GraphQLNonNull(UserType),
-      args: { id: { type: new GraphQLNonNull(UUIDType) } },
-      resolve: async (parent, args: { id: string }) => {
-        const user = await prisma.user.findUnique({
-          where: { id: args.id },
-        });
-        return user;
       },
     },
     profiles: {
-      type: new GraphQLList(ProfileType),
-      resolve: async (parent, args) => {
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ProfileType))),
+      resolve: async () => {
         const profiles = await prisma.profile.findMany();
+        profiles.forEach((profile) => profileLoader.prime(profile.id, profile));
         return profiles;
       },
     },
     profile: {
-      type: ProfileType,
-      args: { id: { type: new GraphQLNonNull(GraphQLString) } },
-      resolve: async (parent, args: { id: string }) => {
-        const profile = await prisma.profile.findUnique({
+      type: ProfileType as GraphQLObjectType,
+      args: { id: { type: new GraphQLNonNull(UUIDType) } },
+      resolve: async (_, args: { id: string }) => {
+        return await prisma.profile.findUnique({
           where: { id: args.id },
         });
-        return profile;
       },
     },
   },

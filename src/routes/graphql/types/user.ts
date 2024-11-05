@@ -13,9 +13,14 @@ import { ProfileType } from './profile.js';
 import { PostType } from './post.js';
 import { postLoader, profileLoader, userLoader } from '../dataLoader.js';
 
+interface UserSubscription {
+  subscriberId: string;
+  authorId: string;
+}
+
 interface CustomUser extends User {
-  userSubscribedTo: Array<{ subscriberId: string }>;
-  subscribedToUser: Array<{ authorId: string }>;
+  userSubscribedTo: UserSubscription[];
+  subscribedToUser: UserSubscription[];
 }
 
 const prisma = new PrismaClient();
@@ -27,7 +32,7 @@ export const UserType = new GraphQLObjectType<CustomUser>({
     name: { type: GraphQLString },
     balance: { type: GraphQLFloat },
     profile: {
-      type: ProfileType,
+      type: ProfileType as GraphQLObjectType,
       resolve: (user: CustomUser) => profileLoader.load(user.id),
     },
     posts: {
@@ -35,18 +40,16 @@ export const UserType = new GraphQLObjectType<CustomUser>({
       resolve: (user: CustomUser) => postLoader.load(user.id),
     },
     userSubscribedTo: {
-      type: new GraphQLList(UserType),
-      resolve: async (customUser: CustomUser) => {
-        const authorIds: string[] =
-          customUser.userSubscribedTo?.map((user) => user.subscriberId) ?? [];
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
+      resolve: async (customUser: CustomUser, _args, context) => {
+        const authorIds = customUser.userSubscribedTo.map((user) => user.authorId);
         return await userLoader.loadMany(authorIds);
       },
     },
     subscribedToUser: {
-      type: new GraphQLList(UserType),
-      resolve: async (customUser: CustomUser) => {
-        const subsIds: string[] =
-          customUser.subscribedToUser?.map((user) => user.authorId) ?? [];
+      type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
+      resolve: async (customUser: CustomUser, _args, context) => {
+        const subsIds = customUser.subscribedToUser.map((user) => user.subscriberId);
         return await userLoader.loadMany(subsIds);
       },
     },

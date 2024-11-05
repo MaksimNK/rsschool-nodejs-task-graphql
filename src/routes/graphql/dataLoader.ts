@@ -7,13 +7,20 @@ export const userLoader = new DataLoader<string, User | null>(async (userIds) =>
   const users = await prisma.user.findMany({
     where: { id: { in: userIds as string[] } },
     include: {
+      profile: {
+        include: {
+          memberType: true,
+        },
+      },
       userSubscribedTo: true,
       subscribedToUser: true,
     },
   });
+
   const usersMap = new Map(users.map((user) => [user.id, user]));
   return userIds.map((userId) => usersMap.get(userId) || null);
 });
+
 export const profileLoader = new DataLoader(async (profileIds: readonly string[]) => {
   const profiles = await prisma.profile.findMany({
     where: { userId: { in: Array.from(profileIds) } },
@@ -48,3 +55,12 @@ export const memberTypeLoader = new DataLoader<string, MemberType | null>(
     return memberTypeIds.map((memberTypeId) => memberTypesMap.get(memberTypeId) || null);
   },
 );
+
+export const rootDataLoader = (prisma: PrismaClient) => {
+  return {
+    userLoader: userLoader,
+    memberTypeLoader: memberTypeLoader,
+    userPostLoader: postLoader,
+    userProfileLoader: profileLoader,
+  };
+};

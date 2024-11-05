@@ -8,8 +8,10 @@ import {
 import { UUIDType } from './uuid.js';
 import { MemberType } from './memberType.js';
 import { PrismaClient, Profile } from '@prisma/client';
-import { memberTypeLoader } from '../dataLoader.js';
-import { MemberTypeIdEnum } from './memberType.js';
+import { memberTypeLoader, userLoader } from '../dataLoader.js';
+import { UserType } from './user.js';
+import { MemberTypeIdEnum } from './enum.js';
+
 const prisma = new PrismaClient();
 
 export const ProfileType = new GraphQLObjectType({
@@ -18,14 +20,21 @@ export const ProfileType = new GraphQLObjectType({
     id: { type: new GraphQLNonNull(UUIDType) },
     isMale: { type: GraphQLBoolean },
     yearOfBirth: { type: GraphQLInt },
-    userId: { type: new GraphQLNonNull(UUIDType) },
-    memberType: {
-      type: new GraphQLNonNull(MemberType),
-      resolve: async (profile: Profile) => {
-        return await memberTypeLoader.load(profile.memberTypeId);
+    userId: { type: UUIDType },
+    memberTypeId: { type: MemberTypeIdEnum },
+    user: {
+      type: UserType as GraphQLObjectType,
+      resolve: async (obj: Profile, _args) => {
+        return await userLoader.load(obj.userId);
       },
     },
-    memberTypeId: { type: MemberTypeIdEnum },
+    memberType: {
+      type: MemberType as GraphQLObjectType,
+      resolve: async (profile: Profile) => {
+        const memberType = await memberTypeLoader.load(profile.memberTypeId);
+        return memberType;
+      },
+    },
   }),
 });
 
